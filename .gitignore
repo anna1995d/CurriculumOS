@@ -1,0 +1,16 @@
+# Python
+backend/.venv/
+backend/__pycache__/
+backend/agents/__pycache__/
+backend/*.pyc
+backend/curriculumos.db
+
+# Environment — never commit secrets
+backend/.env
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# macOS
+.DS_Store
