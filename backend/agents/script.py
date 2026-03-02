@@ -37,22 +37,30 @@ class ScriptAgent(BaseAgent):
         engagement = audience.get("engagement_strategies", ["interactive exercises"])
         attention_span = audience.get("attention_span_minutes", 20)
 
+        duration_min = module.get("duration_minutes", 30)
+        # One section per ~12 minutes; speaker notes at ~120 words/min of section time.
+        target_sections = max(2, round(duration_min / 12))
+        words_per_section = max(300, round((duration_min / target_sections) * 120))
+
         messages = [
             {
                 "role": "system",
                 "content": (
-                    "You are an expert course content writer who creates detailed, engaging lesson scripts. "
-                    "Write for the instructor — this is a speaker guide, not a student handout. "
-                    "Return your response as a JSON object."
+                    "You are an expert course designer and instructional writer. "
+                    "You write verbatim instructor scripts — full sentences the instructor says out loud, "
+                    "not slide bullets or brief notes. Think of it as a stage play script for a lecture: "
+                    "every explanation, question asked to the audience, analogy, worked example, and "
+                    "transition is written out in full. Bullet points are acceptable only inside "
+                    "key_points arrays, never in speaker_notes. Return your response as a JSON object."
                 ),
             },
             {
                 "role": "user",
                 "content": (
-                    f"Write a lesson script for this module.\n\n"
+                    f"Write a detailed instructor script for this module.\n\n"
                     f"MODULE:\n"
                     f"  Title: {module.get('title')}\n"
-                    f"  Duration: {module.get('duration_minutes')} minutes\n"
+                    f"  Duration: {duration_min} minutes\n"
                     f"  Activity type: {module.get('activity_type', 'mixed')}\n"
                     f"  Learning objectives: {json.dumps(module.get('learning_objectives', []))}\n"
                     f"  Concepts to cover: {json.dumps(module_concepts)}\n\n"
@@ -64,6 +72,16 @@ class ScriptAgent(BaseAgent):
                     f"CONCEPT DEPTH GUIDANCE:\n{json.dumps(relevant, indent=2)}\n\n"
                     f"CONTEXT:\n"
                     f"  Transition in: {module.get('transition_note', 'start of course')}\n\n"
+                    f"DEPTH AND LENGTH REQUIREMENTS (strictly enforced):\n"
+                    f"  - Create {target_sections} sections that together fill the full {duration_min} minutes.\n"
+                    f"  - Each section's speaker_notes must be at least {words_per_section} words.\n"
+                    f"  - speaker_notes is the verbatim script of what the instructor says — continuous "
+                    f"prose, not a list. E.g.: 'Good morning everyone. Before we dive in, quick question "
+                    f"for the room — has anyone here tried to...'. Include rhetorical questions, think-alouds, "
+                    f"pauses for the audience, explicit time calls, and step-by-step walkthroughs.\n"
+                    f"  - Insert an activity or engagement break at least once every {attention_span} minutes.\n"
+                    f"    Activity descriptions must be detailed enough for a first-time instructor to run.\n"
+                    f"  - examples[].content must be fully elaborated — not just a title.\n\n"
                     "Return a JSON object with exactly these keys:\n"
                     "{\n"
                     '  "module_id": "string",\n'
@@ -73,24 +91,23 @@ class ScriptAgent(BaseAgent):
                     '    {\n'
                     '      "title": "string",\n'
                     '      "duration_minutes": 0,\n'
-                    '      "speaker_notes": "string — what the instructor says and does",\n'
-                    '      "key_points": ["string"],\n'
-                    '      "examples": [{"type": "analogy|case_study|demo|exercise", "content": "string"}],\n'
-                    '      "activity": {"type": "string", "description": "string", "duration_minutes": 0} or null\n'
+                    f'      "speaker_notes": "string — verbatim instructor prose, min {words_per_section} words",\n'
+                    '      "key_points": ["string — 4-6 concise takeaway bullets"],\n'
+                    '      "examples": [{"type": "analogy|case_study|demo|exercise", "content": "string — full elaborated example"}],\n'
+                    '      "activity": {"type": "string", "description": "string — full runbook for instructor", "duration_minutes": 0} or null\n'
                     "    }\n"
                     "  ],\n"
-                    '  "transition_in": "string — how this module connects to the previous one",\n'
-                    '  "transition_out": "string — how to bridge to the next module",\n'
+                    '  "transition_in": "string — 2-3 sentences the instructor says to open this module",\n'
+                    '  "transition_out": "string — 2-3 sentences to close and preview the next module",\n'
                     '  "materials_needed": ["string"]\n'
                     "}\n\n"
-                    f"Target total duration: {module.get('duration_minutes')} minutes. "
-                    "Include at least one activity or engagement break every "
-                    f"{attention_span} minutes. Use concrete, specific examples appropriate for this audience."
+                    f"The script must be rich enough that a first-time instructor can deliver "
+                    f"the full {duration_min} minutes by reading it. Do not truncate — write everything out."
                 ),
             },
         ]
 
-        result = await self.call_llm_json(messages, temperature=0.6, max_tokens=4000)
+        result = await self.call_llm_json(messages, temperature=0.6, max_tokens=8000)
 
         # Ensure module_id is set
         result.setdefault("module_id", module.get("id", node.id))

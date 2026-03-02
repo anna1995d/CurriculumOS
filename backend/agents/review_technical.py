@@ -21,13 +21,22 @@ class TechnicalReviewAgent(BaseAgent):
         d = node.input_data
         script = d.get("script", {})
         topic_map = d.get("topic_map", {})
+        sibling_modules = d.get("sibling_modules", [])
 
         module_id = script.get("module_id", node.id)
         module_title = script.get("module_title", "Unknown Module")
 
-        # Extract concept depth targets for comparison
         concepts = topic_map.get("concepts", [])
         concept_guide = {c["name"]: c for c in concepts if "name" in c}
+
+        sibling_block = ""
+        if sibling_modules:
+            sibling_block = (
+                f"\nOTHER MODULES IN THIS COURSE:\n{json.dumps(sibling_modules, indent=2)}\n\n"
+                "Cross-reference rule: before flagging a topic as missing or underdeveloped in "
+                "this module, check the sibling modules above. Only raise a finding if the topic "
+                "is absent from the entire course, not just from this module.\n\n"
+            )
 
         messages = [
             {
@@ -46,7 +55,8 @@ class TechnicalReviewAgent(BaseAgent):
                     f"Review this lesson script for technical accuracy.\n\n"
                     f"MODULE: {module_title}\n\n"
                     f"SCRIPT:\n{json.dumps(script, indent=2)}\n\n"
-                    f"EXPECTED CONCEPT DEPTHS:\n{json.dumps(concept_guide, indent=2)}\n\n"
+                    f"EXPECTED CONCEPT DEPTHS:\n{json.dumps(concept_guide, indent=2)}\n"
+                    f"{sibling_block}"
                     "Check for:\n"
                     "  1. Factual errors or outdated information\n"
                     "  2. Incorrect or inconsistent terminology\n"
@@ -77,7 +87,7 @@ class TechnicalReviewAgent(BaseAgent):
             },
         ]
 
-        result = await self.call_llm_json(messages, temperature=0.2, max_tokens=1500)
+        result = await self.call_llm_json(messages, temperature=0.2, max_tokens=2000)
         result["module_id"] = module_id
 
         n_findings = len(result.get("findings", []))

@@ -22,12 +22,22 @@ class BusinessReviewAgent(BaseAgent):
         script = d.get("script", {})
         overlap = d.get("catalog_overlap", {})
         brief = d.get("brief", {})
+        sibling_modules = d.get("sibling_modules", [])
 
         module_id = script.get("module_id", node.id)
         module_title = script.get("module_title", "Unknown Module")
 
         reusable = overlap.get("reusable_modules", [])
         max_overlap = overlap.get("max_overlap_score", 0)
+
+        sibling_block = ""
+        if sibling_modules:
+            sibling_block = (
+                f"\nOTHER MODULES IN THIS COURSE:\n{json.dumps(sibling_modules, indent=2)}\n\n"
+                "Cross-reference rule: when assessing coverage of course objectives, consider "
+                "all sibling modules — an objective may be addressed across multiple modules. "
+                "Only flag an objective as unaddressed if it is missing from the entire course.\n\n"
+            )
 
         messages = [
             {
@@ -54,9 +64,10 @@ class BusinessReviewAgent(BaseAgent):
                     f"  Outcome description: {brief.get('outcome_description', '')}\n\n"
                     f"CATALOG OVERLAP CONTEXT:\n"
                     f"  Max overlap with existing courses: {max_overlap}%\n"
-                    f"  Reusable modules found: {json.dumps([r.get('module_title') for r in reusable])}\n\n"
+                    f"  Reusable modules found: {json.dumps([r.get('module_title') for r in reusable])}\n"
+                    f"{sibling_block}"
                     "Check for:\n"
-                    "  1. Misalignment with the stated learning objectives\n"
+                    "  1. Misalignment with the stated learning objectives (across the full course)\n"
                     "  2. Scope creep (content beyond what the brief requested)\n"
                     "  3. Poor ROI (too much time on low-value content given the duration)\n"
                     "  4. Rebuilding content that already exists in the catalog\n"
@@ -82,7 +93,7 @@ class BusinessReviewAgent(BaseAgent):
             },
         ]
 
-        result = await self.call_llm_json(messages, temperature=0.2, max_tokens=1500)
+        result = await self.call_llm_json(messages, temperature=0.2, max_tokens=2000)
         result["module_id"] = module_id
 
         n_findings = len(result.get("findings", []))

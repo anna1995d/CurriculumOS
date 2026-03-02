@@ -22,6 +22,7 @@ class PedagogyReviewAgent(BaseAgent):
         script = d.get("script", {})
         audience = d.get("audience_profile", {})
         outline = d.get("outline", {})
+        sibling_modules = d.get("sibling_modules", [])
 
         module_id = script.get("module_id", node.id)
         module_title = script.get("module_title", "Unknown Module")
@@ -29,6 +30,16 @@ class PedagogyReviewAgent(BaseAgent):
         attention_span = audience.get("attention_span_minutes", 20)
         knowledge_gaps = audience.get("knowledge_gaps", [])
         preferred = audience.get("preferred_modalities", [])
+
+        sibling_block = ""
+        if sibling_modules:
+            sibling_block = (
+                f"\nOTHER MODULES IN THIS COURSE:\n{json.dumps(sibling_modules, indent=2)}\n\n"
+                "Cross-reference rule: before flagging a prerequisite concept as missing or "
+                "a topic as not yet introduced, check if it is taught in a sibling module "
+                "that appears earlier in the course. Only flag true gaps — topics absent from "
+                "the entire course or sequenced incorrectly.\n\n"
+            )
 
         messages = [
             {
@@ -51,11 +62,12 @@ class PedagogyReviewAgent(BaseAgent):
                     f"  Attention span: ~{attention_span} minutes\n"
                     f"  Knowledge gaps: {json.dumps(knowledge_gaps)}\n"
                     f"  Preferred modalities: {json.dumps(preferred)}\n\n"
-                    f"OUTLINE CONTEXT (for flow):\n{json.dumps(outline, indent=2)}\n\n"
+                    f"OUTLINE CONTEXT (for flow):\n{json.dumps(outline, indent=2)}\n"
+                    f"{sibling_block}"
                     "Check for:\n"
                     "  1. Cognitive overload (too many new concepts in one section)\n"
                     "  2. Engagement gaps (long stretches without interaction)\n"
-                    "  3. Prerequisites assumed but not yet taught\n"
+                    "  3. Prerequisites assumed but not yet taught in this or earlier modules\n"
                     "  4. Unclear explanations for this audience's knowledge level\n"
                     "  5. Activities that are mismatched to learning objectives\n"
                     "  6. Weak or missing transitions between sections\n\n"
@@ -80,7 +92,7 @@ class PedagogyReviewAgent(BaseAgent):
             },
         ]
 
-        result = await self.call_llm_json(messages, temperature=0.2, max_tokens=1500)
+        result = await self.call_llm_json(messages, temperature=0.2, max_tokens=2000)
         result["module_id"] = module_id
 
         n_findings = len(result.get("findings", []))

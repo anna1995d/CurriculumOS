@@ -388,19 +388,45 @@ class PipelineOrchestrator:
             ])
 
             # ── Layer 5: all reviewers in parallel (3 × N) ───────────────────
+            # Build a lightweight cross-module summary so reviewers can see what
+            # other modules cover and avoid flagging topics taught elsewhere.
             brief_dict = self.brief.model_dump(mode="json")
+            module_script_outputs = {
+                mid: (await self._get_node(f"node-script-{mid}")).get("output_data", {})
+                for mid in module_ids
+            }
+            module_summaries = {}
+            for i, m in enumerate(modules):
+                mid = m.get("id", f"module-{i}")
+                s_out = module_script_outputs.get(mid, {})
+                module_summaries[mid] = {
+                    "module_index": i + 1,
+                    "title": m.get("title"),
+                    "duration_minutes": m.get("duration_minutes"),
+                    "activity_type": m.get("activity_type"),
+                    "learning_objectives": m.get("learning_objectives", []),
+                    "concepts_covered": m.get("concepts_covered", []),
+                    # Section titles + key points only — keeps reviewer payload small
+                    "sections": [
+                        {"title": sec.get("title"), "key_points": sec.get("key_points", [])}
+                        for sec in s_out.get("sections", [])
+                    ],
+                }
+
             reviewer_tasks = []
             for mid in module_ids:
-                script_output = (await self._get_node(f"node-script-{mid}")).get("output_data", {})
+                script_output = module_script_outputs[mid]
+                sibling_modules = [v for k, v in module_summaries.items() if k != mid]
                 reviewer_tasks += [
                     self._run_node(f"node-review-tech-{mid}", TechnicalReviewAgent(),
-                                   script=script_output, topic_map=research_output),
+                                   script=script_output, topic_map=research_output,
+                                   sibling_modules=sibling_modules),
                     self._run_node(f"node-review-ped-{mid}", PedagogyReviewAgent(),
                                    script=script_output, audience_profile=audience_output,
-                                   outline=outline_output),
+                                   outline=outline_output, sibling_modules=sibling_modules),
                     self._run_node(f"node-review-biz-{mid}", BusinessReviewAgent(),
                                    script=script_output, catalog_overlap=catalog_output,
-                                   brief=brief_dict),
+                                   brief=brief_dict, sibling_modules=sibling_modules),
                 ]
             await asyncio.gather(*reviewer_tasks)
 
